@@ -1,0 +1,94 @@
+services:
+  # nginx
+  web_nginx:
+    image: nginx:alpine
+    container_name: servidor_nginx
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./conteudo:/usr/share/nginx/html
+    networks:
+      minha_rede:
+        ipv4_address: 98.52.0.21
+    deploy:
+      resources:
+        limits:
+          #limitação para ter mais stress
+          cpus: '0.5'
+          memory: 128M
+
+  # exporter do nginx para o prometheus
+  nginx_exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx_exporter
+    command: -nginx.scrape-uri http://98.52.0.21:80/stub_status
+    networks:
+      minha_rede: {}
+    depends_on:
+      - web_nginx
+
+  # apache
+  web_apache:
+    image: httpd:alpine
+    container_name: servidor_apache
+    volumes:
+      - ./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf
+      - ./conteudo:/usr/local/apache2/htdocs
+    networks:
+      minha_rede:
+        ipv4_address: 98.52.0.22
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # exporter do Apache
+  apache_exporter:
+    image: bitnami/apache-exporter:latest
+    container_name: apache_exporter
+    command: --scrape_uri http://98.52.0.22:80/server-status/?auto
+    networks:
+      minha_rede: {}
+    depends_on:
+      - web_apache
+
+  # prometheus + grafana para observabilidade
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      minha_rede: {}
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      minha_rede: {}
+
+  # cAdvisor
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    privileged: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      minha_rede: {}
+
+networks:
+  minha_rede:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 98.52.0.0/24
